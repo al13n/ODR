@@ -33,9 +33,12 @@ void
 get_info_odrheader(int *packet_type,  struct odr_header *r_odr_header_info, char *frame ); 
 
 void
-send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, char *src_mac,  char *buf);
+send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, char *src_mac,  char *buf, int b_broadcast_RREQ );
 void
 build_ODRheader( char *buf, struct odr_header *odr_header_info);
+
+void 
+build_entry_rt( struct routing_table *rt, char *dest_ip, char next_hop_mac[] );
 
 struct rounting_table *
 create_entry_rt( struct routing_table *input );

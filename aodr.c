@@ -181,22 +181,24 @@ get_info_odrheader(int *packet_type,  struct odr_header *r_odr_header_info, char
 void
 create_rreq( struct odr_header *odr_header_info, rreq_type_num type, char *src_addr, int broadcast_id, char *dest_addr, int hop_cnt  )
 {
+	memset( odr_header_info, 0, sizeof( struct odr_header ) );	
+
 	odr_header_info->header_type = (unsigned int) type;
 	memcpy( odr_header_info->src_ip, src_addr,  INET_ADDRSTRLEN );
 	memcpy( odr_header_info->dest_ip, dest_addr,  INET_ADDRSTRLEN );
 	odr_header_info->broadcast_id = broadcast_id;
 	odr_header_info->hop_cnt = hop_cnt;
-
 }
 
 void
 create_rrep( struct odr_header *odr_header_info, rrep_type_num type, char *src_addr, int lifetime, char *dest_addr, int hop_cnt  )
 {
+	memset( odr_header_info, 0, sizeof( struct odr_header ) );
+
         memcpy( odr_header_info->src_ip, src_addr,  INET_ADDRSTRLEN );
         memcpy( odr_header_info->dest_ip, dest_addr, INET_ADDRSTRLEN );
         odr_header_info->lifetime = lifetime;
         odr_header_info->hop_cnt = hop_cnt;
-
 }
 
 
@@ -206,7 +208,7 @@ create_rrep( struct odr_header *odr_header_info, rrep_type_num type, char *src_a
 #define MAC_LEN		6
 
 void 
-send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, char *src_mac,  char *buf)
+send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, char *src_mac,  char *buf, int b_broadcast_RREQ)
 {
 	struct sockaddr_ll addr_ll;
 	//unsigned char src_mac[6] = { 0x00, 0x0c, 0x29, 0xa3, 0x1f,  0x23 };
@@ -299,6 +301,13 @@ build_ODRheader( char *buf, struct odr_header *odr_header_info)
 		printf("ODR: build_ODRheader() header size error \n");
 }
 
+void build_entry_rt( struct routing_table *rt, char *dest_ip, char next_hop_mac[] )
+{
+	memset( rt, 0, sizeof( struct routing_table ) );
+	memcpy( rt->dest_ip, dest_ip, INET_ADDRSTRLEN );
+	memcpy( rt->next_hop_mac, next_hop_mac, ETH_ALEN );
+} 
+
 
 struct rounting_table * 
 create_entry_rt( struct routing_table *input )
@@ -309,8 +318,8 @@ create_entry_rt( struct routing_table *input )
 		printf("ODR: create_entry_rt() ptr == NULL error\n");
 	}
 
-	memcpy( (void *)((ptr->dest_ip)), (void *)(input->dest_ip), strlen( input->dest_ip ) + 1 );
-	memcpy( ptr->next_hop_mac, input->next_hop_mac, strlen( input->next_hop_mac ) + 1 );
+	memcpy( (void *)((ptr->dest_ip)), (void *)(input->dest_ip), INET_ADDRSTRLEN );
+	memcpy( ptr->next_hop_mac, input->next_hop_mac, ETH_ALEN );
 
 	ptr->next = NULL;
 
@@ -332,7 +341,7 @@ add_entry_rt( struct routing_table *input )
 		printf("ODR: add_entry_rt() ptr== NULL error \n");
 
 	memcpy( ptr->dest_ip, input->dest_ip, strlen( input->dest_ip ) + 1 );
-        memcpy( ptr->next_hop_mac, input->next_hop_mac, strlen( input->next_hop_mac ) + 1 );
+        memcpy( ptr->next_hop_mac, input->next_hop_mac, ETH_ALEN );
 
  	ptr->next = NULL;
 	cur->next = ptr;

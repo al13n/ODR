@@ -120,7 +120,7 @@ main(int argc, char **argv)
 
 	char dest_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	create_rreq( &t_odr_header_info, RREQ_TYPE, ip_str, t_broadcast_id,  t_dest_addr, t_hop_cnt  );
-	send_pfpacket( sockfd_pf, &t_odr_header_info, dest_mac, hw_addr, buf);
+	send_pfpacket( sockfd_pf, &t_odr_header_info, dest_mac, hw_addr, buf, FALSE);
 
 
 	if( (r = recvfrom( sockfd_pf, buf, ETH_FRAME_LEN, 0, &addr_ll, &len_ll)) < 0){
@@ -147,9 +147,17 @@ main(int argc, char **argv)
 	printf("ODR: src_ip %s\n", r_odr_header_info.src_ip );
 
 
-	/* building rt */
-	
+	struct routing_table rt;
+	struct routing_table *prev_rt;
 
+	/* building rt */
+	if ( strcmp( r_odr_header_info.dest_ip, ip_str ) == 0 ){
+		build_entry_rt( &rt, r_odr_header_info.dest_ip, r_src_mac );
+		if ( search_entry_rt( &rt, &prev_rt ) == NULL ){
+			add_entry_rt( &rt );
+			printf("ODR: add entry_rt success \n");
+		}     	
+	}
 
 
 	while(1);
@@ -163,28 +171,122 @@ main(int argc, char **argv)
 		Select( max_fd + 1, &rset, NULL, NULL, NULL);
 		if( FD_ISSET( sockfd, &rset ) ){
 			if( (r = recvfrom( sockfd, buf, MAXLINE, 0, &addr_un, &len)) < 0){
-			printf("ODR: recvfrom() error\n"); exit(1);
+				printf("ODR: recvfrom() error\n"); exit(1);
 			}
-
+			
+			
+			
 			/* TODO: string data convert */
+			
+
+
 		}	
 
 		if( FD_ISSET( sockfd_pf, &rset )){
+
+			struct odr_header r_odr_header_info;
+        		int packet_type = 0;
+        		char r_dest_mac[ ETH_ALEN ];
+        		char r_src_mac[ ETH_ALEN ];
+
+			struct odr_header t_odr_header_info;
+			char t_dest_mac[ ETH_ALEN ];
+			char *t_buf[ MAXLINE ];
+
+			struct routing_table rt;
+        		struct routing_table *prev_rt;
+
+
 			if( (r = recvfrom( sockfd_pf, buf, ETH_FRAME_LEN, 0, &addr_ll, &len_ll)) < 0){
 				printf("ODR: PF_PACKET recvfrom() error \n"); exit(1);
 			}
-
-			struct odr_header *odr_header_info;
 			
-			odr_header_info = (struct odr_header *)((void *)buf + SIZE_OF_PF_HEADER);
+			get_macs_pfpacket( r_dest_mac, r_src_mac, buf );
+        		get_info_odrheader( &packet_type,  &r_odr_header_info, buf);
 
-			printf("ODR: receving packet\n");
-			printf("ODR: frame type : %d\n", odr_header_info->header_type );
-			printf("ODR: dest_ip : %s\n", odr_header_info->dest_ip );
-			printf("ODR: dest_port: %d\n", odr_header_info->dest_port );
-			printf("ODR: src_ip : %s\n", odr_header_info->src_ip );
-			printf("ODR: src_port: %d\n", odr_header_info->src_port );
-			printf("ODR: user msg: %s\n", odr_header_info->user_data );
+
+			if ( packet_type == RREQ_TYPE ){
+				
+				if ( strcmp( r_odr_header_info.dest_ip, ip_str ) == 0 ){
+					build_entry_rt( &rt, r_odr_header_info.dest_ip, r_src_mac );
+                			
+					if ( search_entry_rt( &rt, &prev_rt ) == NULL ){
+                        			add_entry_rt( &rt );
+                        			printf("ODR: add entry_rt success \n");
+					}
+					
+					struct odr_header t_odr_header_info;				
+
+					create_rrep( t_odr_header_info, RREP_NORMAL, ip_str, 0 /*int lifetime*/, r_odr_header_info.src_ip, 0 );
+					memcpy( t_dest_mac, r_src_mac, ETH_ALEN );
+					send_pfpacket( sockfd_pf, &t_odr_header_info, t_dest_mac, hw_addr, t_buf, FALSE );
+                
+
+				} else {
+					; /* TODO: flood rreq pack to next node */
+					build_entry_rt( &rt, r_odr_header_info.dest_ip, r_src_mac );
+					
+					if ( search_entry_rt( &rt, &prev_rt ) == NULL ){
+                                                add_entry_rt( &rt );
+                                                printf("ODR: add entry_rt success \n");
+                                        }
+
+					create_rreq( &t_odr_header_info, RREQ_TYPE, ip_str, r_odr_header_info.broadcast_id,  r_odr_header_info.dest_ip, r_odr_header_info.hop_cnt + 1  );
+        				send_pfpacket( sockfd_pf, &t_odr_header_info, dest_mac, hw_addr, buf, TRUE);
+
+				} 
+		
+
+			} else if ( packet_type == RREP_TYPE ){
+				
+				if ( strcomp( r_odr_header_info.dest_ip, ip_str ) == 0 ){
+					build_entry_rt( &rt, r_odr_header_info.dest_ip, r_src_mac );
+					
+					if ( search_entry_rt( &rt, &prev_rt ) == NULL ){
+                                                add_entry_rt( &rt );
+                                                printf("ODR: add entry_rt success \n");
+                                        }	
+				} else {
+					/* RREP reply */
+					build_entry_rt( &rt, r_odr_header_info.dest_ip, r_src_mac );
+					
+					if ( search_entry_rt( &rt, &prev_rt ) == NULL ){
+                                                add_entry_rt( &rt );
+                                                printf("ODR: add entry_rt success \n");
+                                        }
+					
+					struct routing_table temp_rt;
+					struct routing_table *lookup_rt;
+					
+					memcpy( temp_rt.dest_ip, r_odr_header_info.dest_ip, INET_ADDRSTRLEN );
+					if ( ( lookup_rt = search_entry_rt( &temp_rt, &prev_rt ) ) != NULL ){
+						//dest_mac = lookup_rt->next_hop_mac
+						memcpy( t_dest_mac, lookup_rt->next_hop_mac, ETH_ALEN );
+					} else {
+						printf("ODR: RREP but no rt \n");
+					} 					
+
+					create_rrep( &t_odr_header_info, RREP_TYPE, ip_str, r_odr_header_info.broadcast_id,  r_odr_header_info.dest_ip, r_odr_header_info.hop_cnt + 1  );
+                                        send_pfpacket( sockfd_pf, &t_odr_header_info, t_dest_mac, hw_addr, buf, FALSE );
+
+
+
+
+
+
+				} 
+
+
+ 			} else if ( packet_type == PAYLOAD_TYPE ){
+
+
+			} else {
+				printf("ODR: packet_type error \n");
+			}
+			
+
+
+
 
 
 		}
