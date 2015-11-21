@@ -45,6 +45,8 @@
 struct routing_table *head = NULL;
 struct routing_table *cur = NULL;
 
+struct sunp_port_table *head_sunp = NULL;
+struct sunp_port_table *cur_sunp = NULL;
 
 /*
  * External Functions
@@ -103,7 +105,7 @@ get_hw_info(char hw_addr[], char *ip_str)
                         do{
                                 printf("%.2x%s", *ptr++ & 0xff, (i == 1) ? " " : ":");
                                 sprintf(mac_buf + j *3, "%.2x%s", *p++ & 0xff, (i == 1) ? "\0" : ":");
-                                 if( strncmp(hwa->if_name, "eth1", 4) == 0){
+                                 if( strncmp(hwa->if_name, "eth0", 4) == 0){
                                         hw_addr[6-i] = hwa->if_haddr[6-i];
                                 }
                                 j++;
@@ -111,7 +113,7 @@ get_hw_info(char hw_addr[], char *ip_str)
                 }
                 printf("\n      interface index = %d\n\n", hwa->if_index);
 
-                if( strncmp(hwa->if_name, "eth1", 4) == 0){
+                if( strncmp(hwa->if_name, "eth0", 4) == 0){
 
                         //ip = sa->sin_addr;
                         strcpy(ip_str, sock_ntop_host(sa, sizeof(*sa)));
@@ -183,7 +185,7 @@ create_rreq( struct odr_header *odr_header_info, rreq_type_num type, char *src_a
 {
 	memset( odr_header_info, 0, sizeof( struct odr_header ) );	
 
-	odr_header_info->header_type = (unsigned int) type;
+	odr_header_info->header_type = (unsigned int) RREQ_TYPE;
 	memcpy( odr_header_info->src_ip, src_addr,  INET_ADDRSTRLEN );
 	memcpy( odr_header_info->dest_ip, dest_addr,  INET_ADDRSTRLEN );
 	odr_header_info->broadcast_id = broadcast_id;
@@ -195,6 +197,7 @@ create_rrep( struct odr_header *odr_header_info, rrep_type_num type, char *src_a
 {
 	memset( odr_header_info, 0, sizeof( struct odr_header ) );
 
+	odr_header_info->header_type = (unsigned int) RREP_TYPE;
         memcpy( odr_header_info->src_ip, src_addr,  INET_ADDRSTRLEN );
         memcpy( odr_header_info->dest_ip, dest_addr, INET_ADDRSTRLEN );
         odr_header_info->lifetime = lifetime;
@@ -214,7 +217,7 @@ send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, 
 	//unsigned char src_mac[6] = { 0x00, 0x0c, 0x29, 0xa3, 0x1f,  0x23 };
 	//unsigned char mac[6] = { src_mac[0], src_mac[1], src_mac[2], src_mac[3], src_mac[4], src_mac[5]};
 	char mac_chunk[6];
-	//unsigned char dest_mac[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+	unsigned char broadcast_mac[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 	char pf_frame[MAXLINE];
 	int offset_userdata;
 	int r = 0;
@@ -247,7 +250,10 @@ send_pfpacket( int sock_pf, struct odr_header *odr_header_info, char *dest_mac, 
 	}
 */
 	/* fill in data */
-	memcpy( pf_frame, dest_mac /*src_mac*/, MAC_LEN);
+	if( b_broadcast_RREQ == TRUE )
+		memcpy( pf_frame, broadcast_mac, MAC_LEN );
+	else
+		memcpy( pf_frame, dest_mac /*src_mac*/, MAC_LEN );
 	memcpy( pf_frame + MAC_LEN, src_mac, MAC_LEN);
 	//memset( pf_frame + 2 * MAC_LEN, 0x11, PACKET_TYPE_LEN); 
 	//memcpy( pf_frame + 2 * MAC_LEN, &(etherTypeT), sizeof(etherTypeT));	
@@ -354,12 +360,12 @@ add_entry_rt( struct routing_table *input )
 
 /* TODO: which field is considered for look up rt */
 struct routing_table *
-search_entry_rt( struct routing_table *input, struct routing_table **prev )
+search_entry_rt( char *ip, struct routing_table **prev )
 {
 	struct routing_table *ptr = head;
 		
 	while( ptr != NULL ){
-		if( strcmp( ptr->dest_ip, input->dest_ip ) ){
+		if( strcmp( ptr->dest_ip, ip ) ){
 			return ptr;
 		}
 		else {
@@ -394,4 +400,99 @@ del_entry_rt( struct routing_table *input )
 	free( del );
 	return 0;
 }
+
+
+
+
+struct sunp_port_table *
+create_entry_spt( struct sunp_port_table *input )
+{
+        struct sunp_port_table *ptr = (struct sunp_port_table *)malloc( sizeof( struct sunp_port_table ) );
+
+        if( ptr == NULL ){
+                printf("ODR: create_entry_spt() ptr == NULL error\n");
+        }
+
+        //memcpy( (void *)((ptr->dest_ip)), (void *)(input->dest_ip), INET_ADDRSTRLEN );
+        //memcpy( ptr->next_hop_mac, input->next_hop_mac, ETH_ALEN );
+	memcpy( ptr->sunp, input->sunp, strlen( input->sunp ) + 1 );
+        ptr->port = input->port;
+
+
+
+        ptr->next = NULL;
+
+        head_sunp = cur_sunp = ptr;
+
+        printf("ODR: create_entry_spt() success \n");
+
+        return ptr;
+}
+
+
+struct sunp_port_table *
+add_entry_spt( struct sunp_port_table *input )
+{
+	if ( head_sunp == NULL )
+		return ( create_entry_spt( input ) );
+
+	struct sunp_port_table *ptr = (struct sunp_port_table *)malloc( sizeof( struct sunp_port_table ) );
+	if ( ptr == NULL )
+		printf("ODR: add_entry_spt() ptr == NULL error\n");
+
+	memcpy( ptr->sunp, input->sunp, strlen( input->sunp ) + 1 );
+	ptr->port = input->port;
+
+	ptr->next = NULL;
+	cur_sunp->next = ptr;
+	cur_sunp = ptr;
+
+	printf("ODR: add_entry_spt() success \n");
+	return ptr;
+}
+
+
+
+struct sunp_port_table *
+search_entry_spt( int port, struct routing_table **prev )
+{
+        struct sunp_port_table *ptr = head;
+
+        while( ptr != NULL ){
+                if( ptr->port == port ){
+                        return ptr;
+                }
+                else {
+                        prev = ptr;
+                        ptr = ptr->next;
+                }
+        }
+
+        return NULL;
+}
+
+struct sunp_port_table *
+del_entry_spt( int port )
+{
+        struct sunp_port_table *prev = NULL;
+        struct sunp_port_table *del = NULL;
+
+        del = search_entry_rt( port, &prev );
+
+        if ( del == NULL )
+                return -1;
+        else {
+                if ( prev != NULL )
+                        prev->next = del->next;
+
+                if ( del == cur )
+                        cur_sunp = prev;
+                else if ( del == head_sunp )
+                        head_sunp = del->next;
+        }
+
+        free( del );
+        return 0;
+}
+
 

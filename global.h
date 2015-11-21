@@ -82,6 +82,14 @@ struct routing_table
 
 } ;
 
+struct sunp_port_table
+{
+	char sunp[ 100 ];
+	unsigned int port;
+	struct sunp_port_table *next;
+
+};
+
 
 typedef enum
 {

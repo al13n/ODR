@@ -45,6 +45,16 @@ create_entry_rt( struct routing_table *input );
 struct rounting_table *
 add_entry_rt( struct routing_table *input );
 struct routing_table *
-search_entry_rt( struct routing_table *input, struct routing_table **prev );
+search_entry_rt( char *ip, struct routing_table **prev );
 struct routing_table *
 del_entry_rt( struct routing_table *input );
+
+
+struct sunp_port_table *
+create_entry_spt( struct sunp_port_table *input );
+struct sunp_port_table *
+add_entry_spt( struct sunp_port_table *input );
+struct sunp_port_table *
+search_entry_spt( int port, struct routing_table **prev );
+struct sunp_port_table *
+del_entry_spt( int port );

@@ -79,7 +79,7 @@ msg_send( int sockfd, char *canonical_ip, int port_num
 
 	len = sizeof(ipaddr);
 
-	if( (r = sendto( sockfd, buf, buf_len, 0, &ipaddr, len)) < 0){
+	if( (r = sendto( sockfd, buf, MAXLINE /*buf_len*/, 0,  &ipaddr,  len )) < 0){
 		printf("msg_send() error\n"); exit(1);
 	}
 
